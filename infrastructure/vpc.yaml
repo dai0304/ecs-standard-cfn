@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: >
+  This template deploys a VPC, with a pair of frontend and application subnets spread
+  across two Availability Zones. It deploys an Internet Gateway, with a default
+  route on the frontend subnets. It deploys a pair of NAT Gateways (one in each AZ),
+  and default routes for them in the application subnets.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.192.0.0/16
+
+  FrontendSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the frontend subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.10.0/24
+
+  FrontendSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the frontend subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.11.0/24
+
+  ApplicationSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the application subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.20.0/24
+
+  ApplicationSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the application subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.21.0/24
+
+Resources:
+
+# ------------------------------------------------------------#
+# VPC and IGW
+# ------------------------------------------------------------#
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+# ------------------------------------------------------------#
+# Subnets
+# ------------------------------------------------------------#
+
+  FrontendSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref FrontendSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Frontend Subnet (AZ1)
+
+  FrontendSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref FrontendSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Frontend Subnet (AZ2)
+
+  ApplicationSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Ref ApplicationSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Application Subnet (AZ1)
+
+  ApplicationSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Ref ApplicationSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Application Subnet (AZ2)
+
+# ------------------------------------------------------------#
+# Routing
+# ------------------------------------------------------------#
+
+  FrontendRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Frontend Routes (AZ1)
+
+  FrontendRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Frontend Routes (AZ2)
+
+  ApplicationRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Application Routes (AZ1)
+
+  ApplicationRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Application Routes (AZ2)
+
+  DefaultFrontendRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref FrontendRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  DefaultFrontendRoute2:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref FrontendRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  DefaultApplicationRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ApplicationRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  DefaultApplicationRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ApplicationRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  FrontendSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref FrontendRouteTable1
+      SubnetId: !Ref FrontendSubnet1
+
+  FrontendSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref FrontendRouteTable2
+      SubnetId: !Ref FrontendSubnet2
+
+  ApplicationSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref ApplicationRouteTable1
+      SubnetId: !Ref ApplicationSubnet1
+
+  ApplicationSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref ApplicationRouteTable2
+      SubnetId: !Ref ApplicationSubnet2
+
+Outputs:
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+
+  FrontendSubnets:
+    Description: A list of the frontend subnets
+    Value: !Join [",", [!Ref FrontendSubnet1, !Ref FrontendSubnet2]]
+
+  ApplicationSubnets:
+    Description: A list of the application subnets
+    Value: !Join [",", [!Ref ApplicationSubnet1, !Ref ApplicationSubnet2]]
+
+  FrontendSubnet1:
+    Description: A reference to the frontend subnet in the 1st Availability Zone
+    Value: !Ref FrontendSubnet1
+
+  FrontendSubnet2:
+    Description: A reference to the frontend subnet in the 2nd Availability Zone
+    Value: !Ref FrontendSubnet2
+
+  ApplicationSubnet1:
+    Description: A reference to the application subnet in the 1st Availability Zone
+    Value: !Ref ApplicationSubnet1
+
+  ApplicationSubnet2:
+    Description: A reference to the application subnet in the 2nd Availability Zone
+    Value: !Ref ApplicationSubnet2
